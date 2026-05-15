@@ -42,10 +42,10 @@ jobs:
         run: terraform validate
 
       - name: 📊 Terraform Plan
-        run: terraform plan -out=tfplan -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}"
+        run: terraform plan -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}"
 
       - name: 🚀 Terraform Apply
-        run: terraform apply -auto-approve tfplan -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}"
+        run: terraform apply -auto-approve -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}"
 
       - name: 📤 Export IPs and ALB DNS
         id: export
