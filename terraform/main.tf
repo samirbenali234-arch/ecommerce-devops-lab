@@ -12,6 +12,11 @@ provider "aws" {
   # Les credentials viennent des variables d'env GitHub Actions
 }
 
+variable "ec2_public_key" {
+  description = "EC2 SSH public key"
+  type        = string
+}
+
 data "aws_availability_zones" "available" {}
 
 # ─── VPC ─────────────────────────────────────────────────
@@ -109,7 +114,7 @@ resource "aws_security_group" "ec2_sg" {
 # ─── Key Pair SSH ─────────────────────────────────────────
 resource "aws_key_pair" "deployer" {
   key_name   = "ecommerce-key"
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = var.ec2_public_key
 }
 
 # ─── EC2 Instances ────────────────────────────────────────
