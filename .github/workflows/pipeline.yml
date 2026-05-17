@@ -41,6 +41,24 @@ jobs:
       - name: ✅ Terraform Validate
         run: terraform validate
 
+      - name: 🔧 Import existing resources
+        run: |
+          terraform import aws_key_pair.deployer ecommerce-key 2>/dev/null || true
+          terraform import aws_lb.web_alb \
+            $(aws elbv2 describe-load-balancers \
+              --names ecommerce-alb \
+              --query 'LoadBalancers[0].LoadBalancerArn' \
+              --output text) 2>/dev/null || true
+          terraform import aws_lb_target_group.web \
+            $(aws elbv2 describe-target-groups \
+              --names ecommerce-tg \
+              --query 'TargetGroups[0].TargetGroupArn' \
+              --output text) 2>/dev/null || true
+        continue-on-error: true
+
+      - name: 📊 Terraform Plan
+        run: terraform plan ...
+
       - name: 📊 Terraform Plan
         run: terraform plan -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}"
 
