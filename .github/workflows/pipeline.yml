@@ -3,13 +3,10 @@ name: Full DevOps Pipeline
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:  # Permet le déclenchement manuel
+  workflow_dispatch:
 
 jobs:
 
-  # ══════════════════════════════════════════
-  # 1. TERRAFORM — Créer l'infrastructure AWS
-  # ══════════════════════════════════════════
   terraform:
     name: 🏗️ Provision Infrastructure
     runs-on: ubuntu-latest
@@ -78,9 +75,6 @@ jobs:
           echo "✅ IPs: $IPS"
           echo "✅ ALB: $ALB"
 
-  # ══════════════════════════════════════════
-  # 2. ANSIBLE — Configurer les serveurs
-  # ══════════════════════════════════════════
   ansible:
     name: ⚙️ Configure Servers
     runs-on: ubuntu-latest
@@ -113,12 +107,11 @@ jobs:
           echo "📋 Inventory généré:"
           cat inventory.ini
 
-      - name: ⏳ Wait for EC2 to be ready (60s)
+      - name: ⏳ Wait for EC2 to be ready
         run: sleep 60
 
       - name: 🎭 Run Ansible Playbook
-        run: |
-          ansible-playbook -i inventory.ini ansible/deploy.yml -v
+        run: ansible-playbook -i inventory.ini ansible/deploy.yml -v
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
 
@@ -129,9 +122,6 @@ jobs:
           echo "🌐 App URL: http://${{ needs.terraform.outputs.alb_dns }}"
           echo "════════════════════════════════════"
 
-  # ══════════════════════════════════════════
-  # 3. DESTROY — Optionnel (manuel seulement)
-  # ══════════════════════════════════════════
   destroy:
     name: 🗑️ Destroy Infrastructure
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
@@ -142,6 +132,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+
       - name: 🔑 Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -149,7 +140,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
+
       - uses: hashicorp/setup-terraform@v3
+
       - run: terraform init
+
       - name: 💥 Terraform Destroy
-        run: terraform destroy -auto-approve
+        run: terraform destroy -auto-approve -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}"
