@@ -38,11 +38,11 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      - name: Import existing resources
+      - name: Import Key Pair only
         run: |
           terraform import \
             -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}" \
-            aws_key_pair.deployer ecommerce-key 2>/dev/null || true
+            aws_key_pair.deployer ecommerce-key || true
         continue-on-error: true
 
       - name: Terraform Plan
