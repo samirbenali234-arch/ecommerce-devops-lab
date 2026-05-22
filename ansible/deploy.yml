@@ -1,94 +1,57 @@
 ---
-- name: Deploy E-Commerce Application
+- name: Deploy App
   hosts: web
   become: yes
-  gather_facts: yes
 
   tasks:
-
-    - name: Update packages
-      yum:
-        name: "*"
-        state: latest
-      ignore_errors: yes
 
     - name: Install Docker
       yum:
         name: docker
         state: present
 
-    - name: Start and enable Docker
+    - name: Start Docker
       service:
         name: docker
         state: started
         enabled: yes
 
-    - name: Add ec2-user to docker group
-      user:
-        name: ec2-user
-        groups: docker
-        append: yes
-
-    - name: Install Docker Compose
-      get_url:
-        url: "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64"
-        dest: /usr/local/bin/docker-compose
-        mode: '0755'
-      ignore_errors: yes
-
-    - name: Stop existing containers
+    - name: Stop old containers
       shell: docker stop nginx nodeapp mongodb 2>/dev/null || true
-      ignore_errors: yes
 
-    - name: Remove existing containers
+    - name: Remove old containers
       shell: docker rm nginx nodeapp mongodb 2>/dev/null || true
-      ignore_errors: yes
 
     - name: Run MongoDB
-      shell: |
-        docker run -d \
-          --name mongodb \
-          --restart always \
-          -p 27017:27017 \
-          mongo:6
-      ignore_errors: yes
+      shell: docker run -d --name mongodb --restart always -p 27017:27017 mongo:6
 
-    - name: Wait for MongoDB to start
+    - name: Wait MongoDB
       pause:
         seconds: 10
 
-    - name: Create app directory
+    - name: Create app folder
       file:
         path: /home/ec2-user/app
         state: directory
-        owner: ec2-user
 
-    - name: Create Node.js app file
+    - name: Write server.js
       copy:
         dest: /home/ec2-user/app/server.js
         content: |
-          const express = require('express');
-          const app = express();
+          var express = require('express');
+          var app = express();
           app.get('/', function(req, res) {
-            res.send('<h1>E-Commerce Store</h1><ul><li>Laptop 1200</li><li>Phone 800</li></ul>');
+            res.send('<h1>E-Commerce Store</h1><p>Laptop 1200</p><p>Phone 800</p>');
           });
-          app.listen(3000, function() {
-            console.log('Running on port 3000');
-          });
+          app.listen(3000);
 
-    - name: Create package.json
+    - name: Write package.json
       copy:
         dest: /home/ec2-user/app/package.json
         content: |
-          {
-            "name": "ecommerce",
-            "version": "1.0.0",
-            "dependencies": {
-              "express": "4.18.2"
-            }
-          }
+          {"name":"app","version":"1.0.0","dependencies":{"express":"4.18.2"}}
 
-    - name: Run Node.js app
+    - name: Run Node app
       shell: |
         docker run -d \
           --name nodeapp \
@@ -98,9 +61,8 @@
           -w /app \
           node:18-alpine \
           sh -c "npm install && node server.js"
-      ignore_errors: yes
 
-    - name: Create Nginx config
+    - name: Write nginx.conf
       copy:
         dest: /home/ec2-user/nginx.conf
         content: |
@@ -110,7 +72,6 @@
               listen 80;
               location / {
                 proxy_pass http://172.17.0.1:3000;
-                proxy_set_header Host $host;
               }
             }
           }
@@ -123,12 +84,11 @@
           -p 80:80 \
           -v /home/ec2-user/nginx.conf:/etc/nginx/nginx.conf \
           nginx:alpine
-      ignore_errors: yes
 
-    - name: Show running containers
+    - name: Check containers
       shell: docker ps
-      register: containers
+      register: result
 
-    - name: Print containers
+    - name: Show containers
       debug:
-        msg: "{{ containers.stdout }}"
+        msg: "{{ result.stdout }}"
