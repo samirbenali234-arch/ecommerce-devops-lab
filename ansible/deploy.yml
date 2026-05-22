@@ -6,11 +6,11 @@
 
   tasks:
 
-    # ── Installation Docker ────────────────────
     - name: Update packages
       yum:
         name: "*"
         state: latest
+      ignore_errors: yes
 
     - name: Install Docker
       yum:
@@ -23,63 +23,112 @@
         state: started
         enabled: yes
 
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
     - name: Install Docker Compose
       get_url:
         url: "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64"
         dest: /usr/local/bin/docker-compose
         mode: '0755'
+      ignore_errors: yes
 
-    # ── Déploiement Nginx ──────────────────────
-    - name: Run Nginx container
-      shell: |
-        docker stop nginx 2>/dev/null || true
-        docker rm nginx 2>/dev/null || true
-        docker run -d \
-          --name nginx \
-          --restart always \
-          -p 80:80 \
-          -e BACKEND_URL=http://localhost:3000 \
-          nginx:alpine
+    - name: Stop existing containers
+      shell: docker stop nginx nodeapp mongodb 2>/dev/null || true
+      ignore_errors: yes
 
-    # ── Déploiement Node.js App ────────────────
-    - name: Run Node.js e-commerce app
-      shell: |
-        docker stop nodeapp 2>/dev/null || true
-        docker rm nodeapp 2>/dev/null || true
-        docker run -d \
-          --name nodeapp \
-          --restart always \
-          -p 3000:3000 \
-          -e MONGO_URL=mongodb://mongodb:27017/ecommerce \
-          node:18-alpine \
-          sh -c "npm install express mongoose && node -e \"
-            const express = require('express');
-            const app = express();
-            app.get('/', (req, res) => {
-              res.send('
-E-Commerce Store
-Laptop \$1200
-Phone \$800
-');
-            });
-            app.listen(3000, () => console.log('Running on 3000'));
-          \""
+    - name: Remove existing containers
+      shell: docker rm nginx nodeapp mongodb 2>/dev/null || true
+      ignore_errors: yes
 
-    # ── Déploiement MongoDB ────────────────────
-    - name: Run MongoDB container
+    - name: Run MongoDB
       shell: |
-        docker stop mongodb 2>/dev/null || true
-        docker rm mongodb 2>/dev/null || true
         docker run -d \
           --name mongodb \
           --restart always \
           -p 27017:27017 \
           mongo:6
+      ignore_errors: yes
 
-    - name: Verify containers are running
+    - name: Wait for MongoDB to start
+      pause:
+        seconds: 10
+
+    - name: Create app directory
+      file:
+        path: /home/ec2-user/app
+        state: directory
+        owner: ec2-user
+
+    - name: Create Node.js app file
+      copy:
+        dest: /home/ec2-user/app/server.js
+        content: |
+          const express = require('express');
+          const app = express();
+          app.get('/', function(req, res) {
+            res.send('<h1>E-Commerce Store</h1><ul><li>Laptop 1200</li><li>Phone 800</li></ul>');
+          });
+          app.listen(3000, function() {
+            console.log('Running on port 3000');
+          });
+
+    - name: Create package.json
+      copy:
+        dest: /home/ec2-user/app/package.json
+        content: |
+          {
+            "name": "ecommerce",
+            "version": "1.0.0",
+            "dependencies": {
+              "express": "4.18.2"
+            }
+          }
+
+    - name: Run Node.js app
+      shell: |
+        docker run -d \
+          --name nodeapp \
+          --restart always \
+          -p 3000:3000 \
+          -v /home/ec2-user/app:/app \
+          -w /app \
+          node:18-alpine \
+          sh -c "npm install && node server.js"
+      ignore_errors: yes
+
+    - name: Create Nginx config
+      copy:
+        dest: /home/ec2-user/nginx.conf
+        content: |
+          events {}
+          http {
+            server {
+              listen 80;
+              location / {
+                proxy_pass http://172.17.0.1:3000;
+                proxy_set_header Host $host;
+              }
+            }
+          }
+
+    - name: Run Nginx
+      shell: |
+        docker run -d \
+          --name nginx \
+          --restart always \
+          -p 80:80 \
+          -v /home/ec2-user/nginx.conf:/etc/nginx/nginx.conf \
+          nginx:alpine
+      ignore_errors: yes
+
+    - name: Show running containers
       shell: docker ps
       register: containers
-    
-    - name: Show running containers
+
+    - name: Print containers
       debug:
         msg: "{{ containers.stdout }}"
