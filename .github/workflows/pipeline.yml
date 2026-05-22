@@ -38,8 +38,34 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      - name: Import Key Pair
-        run: terraform import -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}" aws_key_pair.deployer ecommerce-key 2>/dev/null || true
+      - name: Import existing resources
+        run: |
+          # Import Key Pair
+          terraform import \
+            -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}" \
+            aws_key_pair.deployer ecommerce-key 2>/dev/null || true
+
+          # Import ALB
+          ALB_ARN=$(aws elbv2 describe-load-balancers \
+            --names ecommerce-alb \
+            --query 'LoadBalancers[0].LoadBalancerArn' \
+            --output text 2>/dev/null | tr -d '\n' || echo "")
+          if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+            terraform import \
+              -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}" \
+              aws_lb.web_alb "$ALB_ARN" 2>/dev/null || true
+          fi
+
+          # Import Target Group
+          TG_ARN=$(aws elbv2 describe-target-groups \
+            --names ecommerce-tg \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text 2>/dev/null | tr -d '\n' || echo "")
+          if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
+            terraform import \
+              -var="ec2_public_key=${{ secrets.EC2_PUBLIC_KEY }}" \
+              aws_lb_target_group.web "$TG_ARN" 2>/dev/null || true
+          fi
         continue-on-error: true
 
       - name: Terraform Plan
